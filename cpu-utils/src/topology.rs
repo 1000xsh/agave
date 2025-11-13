@@ -30,7 +30,7 @@ use std::fs;
 ///
 /// # Errors
 ///
-/// Returns [`CpuAffinityError::SystemCall`] if unable to read system information.
+/// Returns [`CpuAffinityError::Io`] if unable to read system information.
 /// Returns [`CpuAffinityError::NotSupported`] on non-Linux platforms.
 #[cfg(target_os = "linux")]
 pub fn physical_core_count() -> Result<usize, CpuAffinityError> {
@@ -93,7 +93,7 @@ pub fn physical_core_count() -> Result<usize, CpuAffinityError> {
 ///
 /// # Errors
 ///
-/// Returns [`CpuAffinityError::SystemCall`] if unable to read topology information.
+/// Returns [`CpuAffinityError::Io`] if unable to read topology information.
 /// Returns [`CpuAffinityError::NotSupported`] on non-Linux platforms.
 #[cfg(target_os = "linux")]
 pub fn core_to_cpus_mapping() -> Result<BTreeMap<usize, Vec<usize>>, CpuAffinityError> {
@@ -151,7 +151,7 @@ pub fn core_to_cpus_mapping() -> Result<BTreeMap<usize, Vec<usize>>, CpuAffinity
 ///
 /// Returns [`CpuAffinityError::EmptyCpuList`] if the core list is empty.
 /// Returns [`CpuAffinityError::InvalidPhysicalCore`] if any core ID is invalid.
-/// Returns [`CpuAffinityError::SystemCall`] if the system call fails.
+/// Returns [`CpuAffinityError::Io`] if the system call fails.
 /// Returns [`CpuAffinityError::NotSupported`] on non-Linux platforms.
 ///
 #[cfg(target_os = "linux")]

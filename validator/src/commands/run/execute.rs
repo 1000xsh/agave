@@ -6,6 +6,7 @@ use {
         commands::{run::args::RunArgs, FromClapArgMatches},
         ledger_lockfile, lock_ledger,
     },
+    agave_cpu_utils,
     agave_logger::redirect_stderr_to_file,
     agave_snapshots::{
         paths::BANK_SNAPSHOTS_DIR,
@@ -68,7 +69,7 @@ use {
     solana_tpu_client::tpu_client::DEFAULT_TPU_ENABLE_UDP,
     solana_turbine::{
         broadcast_stage::BroadcastStageType,
-        xdp::{set_cpu_affinity, XdpConfig},
+        xdp::XdpConfig,
     },
     solana_validator_exit::Exit,
     std::{
@@ -667,7 +668,7 @@ pub fn execute(
         let available = (0..agave_cpu_utils::cpu_count().unwrap_or(0))
             .collect::<HashSet<_>>();
         let available = available.difference(&reserved);
-        set_cpu_affinity(available.into_iter().copied()).unwrap();
+        agave_cpu_utils::set_cpu_affinity(available.into_iter().copied()).unwrap();
     }
 
     let vote_account = pubkey_of(matches, "vote_account").unwrap_or_else(|| {

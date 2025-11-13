@@ -9,10 +9,10 @@ use {
             UDP_HEADER_SIZE,
         },
         route::Router,
-        set_cpu_affinity,
         socket::{Socket, Tx, TxRing},
         umem::{Frame as _, PageAlignedMemory, SliceUmem, SliceUmemFrame, Umem as _},
     },
+    agave_cpu_utils::set_cpu_affinity,
     caps::{
         CapSet,
         Capability::{CAP_NET_ADMIN, CAP_NET_RAW},

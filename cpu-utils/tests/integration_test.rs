@@ -4,6 +4,8 @@
 //! They test actual system interactions including CPU affinity changes.
 
 use agave_cpu_utils::*;
+#[cfg(target_os = "linux")]
+use libc;
 
 #[test]
 #[cfg(target_os = "linux")]
@@ -28,7 +30,9 @@ fn test_set_and_get_affinity() {
     } else {
         // Permission denied is acceptable in CI/containers
         match result.unwrap_err() {
-            CpuAffinityError::SystemCall(msg) if msg.contains("Operation not permitted") => {
+            CpuAffinityError::Io(ref err)
+                if err.raw_os_error() == Some(libc::EPERM) ||
+                   err.to_string().contains("Operation not permitted") => {
                 eprintln!("Skipping affinity test: insufficient permissions");
             }
             e => panic!("Unexpected error: {:?}", e),

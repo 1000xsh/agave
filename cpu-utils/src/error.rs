@@ -7,9 +7,9 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum CpuAffinityError {
-    /// System call failed
-    #[error("System call failed: {0}")]
-    SystemCall(String),
+    /// I/O or system call error
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
 
     /// Operation not supported on this platform
     #[error("CPU affinity operations are not supported on this platform")]
@@ -32,17 +32,13 @@ pub enum CpuAffinityError {
     ParseError(String),
 }
 
-impl From<io::Error> for CpuAffinityError {
-    fn from(err: io::Error) -> Self {
-        CpuAffinityError::SystemCall(err.to_string())
-    }
-}
-
 // PartialEq for testing
 impl PartialEq for CpuAffinityError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::SystemCall(a), Self::SystemCall(b)) => a == b,
+            (Self::Io(a), Self::Io(b)) => {
+                a.kind() == b.kind() && a.to_string() == b.to_string()
+            }
             (Self::NotSupported, Self::NotSupported) => true,
             (Self::InvalidCpu { cpu: a1, max: a2 }, Self::InvalidCpu { cpu: b1, max: b2 }) => {
                 a1 == b1 && a2 == b2
@@ -91,10 +87,11 @@ mod tests {
         let io_err = io::Error::new(io::ErrorKind::PermissionDenied, "Permission denied");
         let cpu_err: CpuAffinityError = io_err.into();
         match cpu_err {
-            CpuAffinityError::SystemCall(msg) => {
-                assert!(msg.contains("Permission denied"));
+            CpuAffinityError::Io(err) => {
+                assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+                assert!(err.to_string().contains("Permission denied"));
             }
-            _ => panic!("Expected SystemCall error"),
+            _ => panic!("Expected Io error"),
         }
     }
 

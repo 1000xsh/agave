@@ -130,9 +130,19 @@ impl PohService {
                     // PoH service runs in a tight loop, generating hashes as fast as possible.
                     // Let's dedicate one of the CPU cores to this thread so that it can gain
                     // from cache performance.
-                    if let Ok(cpu_count) = agave_cpu_utils::cpu_count() {
-                        if pinned_cpu_core < cpu_count {
-                            let _ = agave_cpu_utils::set_cpu_affinity([pinned_cpu_core]);
+                    match agave_cpu_utils::cpu_count() {
+                        Ok(cpu_count) => {
+                            if pinned_cpu_core >= cpu_count {
+                                panic!(
+                                    "POH service requested CPU {} but only {} CPUs available",
+                                    pinned_cpu_core, cpu_count
+                                );
+                            }
+                            agave_cpu_utils::set_cpu_affinity([pinned_cpu_core])
+                                .expect("Failed to set CPU affinity for POH service. This is critical for performance.");
+                        }
+                        Err(e) => {
+                            panic!("Failed to determine CPU count for POH service affinity: {:?}", e);
                         }
                     }
                     Self::tick_producer(

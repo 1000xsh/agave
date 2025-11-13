@@ -20,7 +20,7 @@ const CPU_SETSIZE: usize = 1024;
 /// automatically deduplicated.
 ///
 /// # Arguments
-/// * `cpus` - Iterator of CPU IDs to bind the thread to
+/// * `cpus` - CPU IDs to bind the thread to. Can be any iterable collection.
 ///
 /// # Examples
 ///
@@ -40,23 +40,22 @@ const CPU_SETSIZE: usize = 1024;
 ///
 /// Returns [`CpuAffinityError::EmptyCpuList`] if the CPU list is empty.
 /// Returns [`CpuAffinityError::InvalidCpu`] if any CPU ID exceeds the system maximum.
-/// Returns [`CpuAffinityError::SystemCall`] if the system call fails (e.g., permission denied).
+/// Returns [`CpuAffinityError::Io`] if the system call fails (e.g., permission denied).
 /// Returns [`CpuAffinityError::NotSupported`] on non-Linux platforms.
 ///
 #[cfg(target_os = "linux")]
 pub fn set_cpu_affinity(
     cpus: impl IntoIterator<Item = usize>,
 ) -> Result<(), CpuAffinityError> {
-    // Convert to HashSet to remove duplicates
-    let cpus: HashSet<usize> = cpus.into_iter().collect();
-
-    if cpus.is_empty() {
-        return Err(CpuAffinityError::EmptyCpuList);
-    }
-
-    // Validate CPU IDs
+    // Initialize CPU set
+    // safety: cpu_set_t is a POD type, zero-initialization is standard
+    let mut cpu_set: libc::cpu_set_t = unsafe { std::mem::zeroed() };
     let max_cpu = max_cpu_id()?;
-    for &cpu in &cpus {
+    let mut has_cpus = false;
+
+    // validate, deduplicate via CPU_ISSET, and set CPUs
+    for cpu in cpus {
+        // Validate CPU ID first
         if cpu > max_cpu {
             return Err(CpuAffinityError::InvalidCpu { cpu, max: max_cpu });
         }
@@ -67,18 +66,22 @@ pub fn set_cpu_affinity(
                 max: CPU_SETSIZE - 1,
             });
         }
-    }
 
-    // Initialize CPU set
-    // safety: cpu_set_t is a POD type, zero-initialization is standard
-    let mut cpu_set: libc::cpu_set_t = unsafe { std::mem::zeroed() };
+        // safety: CPU_ISSET is safe after validation above
+        if unsafe { libc::CPU_ISSET(cpu, &cpu_set) } {
+            continue;
+        }
 
-    // Add CPUs to the set
-    for cpu in cpus {
+        // Add CPU to the set
         // safety: We've validated cpu is within valid range
         unsafe {
             libc::CPU_SET(cpu, &mut cpu_set);
         }
+        has_cpus = true;
+    }
+
+    if !has_cpus {
+        return Err(CpuAffinityError::EmptyCpuList);
     }
 
     // Apply the affinity
@@ -92,9 +95,7 @@ pub fn set_cpu_affinity(
     };
 
     if result != 0 {
-        return Err(CpuAffinityError::SystemCall(
-            io::Error::last_os_error().to_string(),
-        ));
+        return Err(CpuAffinityError::Io(io::Error::last_os_error()));
     }
 
     Ok(())
@@ -124,7 +125,7 @@ pub fn set_cpu_affinity(
 ///
 /// # Errors
 ///
-/// Returns [`CpuAffinityError::SystemCall`] if the system call fails.
+/// Returns [`CpuAffinityError::Io`] if the system call fails.
 /// Returns [`CpuAffinityError::NotSupported`] on non-Linux platforms.
 #[cfg(target_os = "linux")]
 pub fn cpu_affinity() -> Result<Vec<usize>, CpuAffinityError> {
@@ -142,9 +143,7 @@ pub fn cpu_affinity() -> Result<Vec<usize>, CpuAffinityError> {
     };
 
     if result != 0 {
-        return Err(CpuAffinityError::SystemCall(
-            io::Error::last_os_error().to_string(),
-        ));
+        return Err(CpuAffinityError::Io(io::Error::last_os_error()));
     }
 
     // Extract CPU IDs from the set
@@ -167,9 +166,9 @@ pub fn cpu_affinity() -> Result<Vec<usize>, CpuAffinityError> {
     Err(CpuAffinityError::NotSupported)
 }
 
-/// Get the maximum CPU ID on the system.
+/// Get the maximum CPU ID on the system (online CPUs only).
 ///
-/// Reads from `/sys/devices/system/cpu/present` or falls back to `sysconf(_SC_NPROCESSORS_CONF)`.
+/// Reads from `/sys/devices/system/cpu/online` or falls back to `sysconf(_SC_NPROCESSORS_ONLN)`.
 ///
 /// # Examples
 ///
@@ -184,12 +183,12 @@ pub fn cpu_affinity() -> Result<Vec<usize>, CpuAffinityError> {
 ///
 /// # Errors
 ///
-/// Returns [`CpuAffinityError::SystemCall`] if unable to determine CPU count.
+/// Returns [`CpuAffinityError::Io`] if unable to determine CPU count.
 /// Returns [`CpuAffinityError::NotSupported`] on non-Linux platforms.
 #[cfg(target_os = "linux")]
 pub fn max_cpu_id() -> Result<usize, CpuAffinityError> {
     // Try to read from sysfs first
-    if let Ok(content) = fs::read_to_string("/sys/devices/system/cpu/present") {
+    if let Ok(content) = fs::read_to_string("/sys/devices/system/cpu/online") {
         let content = content.trim();
 
         // Parse range (e.g., "0-127" or just "0")
@@ -202,14 +201,18 @@ pub fn max_cpu_id() -> Result<usize, CpuAffinityError> {
         }
     }
 
-    // Fallback to sysconf
+    // Fallback to sysconf for online processors.
+    // Note: sysconf(_SC_NPROCESSORS_ONLN) in glibc has a different fallback chain:
+    // 1. Tries /sys/devices/system/cpu/online (same as above)
+    // 2. Falls back to /proc/stat (counts cpu* lines)
+    // 3. Falls back to sched_getaffinity syscall
+    // 4. Returns 2 as a conservative estimate if all else fails
+    // This provides additional robustness when sysfs is not available.
     // safety: sysconf is safe to call
-    let count = unsafe { libc::sysconf(libc::_SC_NPROCESSORS_CONF) };
+    let count = unsafe { libc::sysconf(libc::_SC_NPROCESSORS_ONLN) };
 
     if count <= 0 {
-        return Err(CpuAffinityError::SystemCall(
-            "Failed to get processor count".to_string(),
-        ));
+        return Err(CpuAffinityError::Io(io::Error::last_os_error()));
     }
 
     Ok((count as usize).saturating_sub(1))
@@ -220,9 +223,10 @@ pub fn max_cpu_id() -> Result<usize, CpuAffinityError> {
     Err(CpuAffinityError::NotSupported)
 }
 
-/// Get the total number of CPUs on the system.
+/// Get the total number of online CPUs on the system.
 ///
-/// Returns the count of logical CPUs (includes hyperthreads). Equivalent to `max_cpu_id() + 1`.
+/// Returns the count of online logical CPUs (includes hyperthreads). Equivalent to `max_cpu_id() + 1`.
+/// Note: This returns only online CPUs, not all present CPUs.
 ///
 /// # Examples
 ///
@@ -237,7 +241,7 @@ pub fn max_cpu_id() -> Result<usize, CpuAffinityError> {
 ///
 /// # Errors
 ///
-/// Returns [`CpuAffinityError::SystemCall`] if unable to determine CPU count.
+/// Returns [`CpuAffinityError::Io`] if unable to determine CPU count.
 /// Returns [`CpuAffinityError::NotSupported`] on non-Linux platforms.
 pub fn cpu_count() -> Result<usize, CpuAffinityError> {
     Ok(max_cpu_id()? + 1)
@@ -303,20 +307,18 @@ fn parse_cpu_range_list(s: &str) -> Result<Vec<usize>, CpuAffinityError> {
             continue;
         }
 
-        if let Some(dash_pos) = part.find('-') {
+        if let Some((start_str, end_str)) = part.split_once('-') {
             // Range (e.g., "0-3")
-            let start = part[..dash_pos]
+            let start = start_str
                 .trim()
                 .parse::<usize>()
                 .map_err(|_| CpuAffinityError::ParseError(format!("Invalid CPU range: {}", part)))?;
-            let end = part[dash_pos + 1..]
+            let end = end_str
                 .trim()
                 .parse::<usize>()
                 .map_err(|_| CpuAffinityError::ParseError(format!("Invalid CPU range: {}", part)))?;
 
-            for cpu in start..=end {
-                cpus.insert(cpu);
-            }
+            cpus.extend(start..=end);
         } else {
             // Single CPU
             let cpu = part
