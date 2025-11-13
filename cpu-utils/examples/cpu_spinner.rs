@@ -57,8 +57,8 @@ impl PohStats {
     }
 
     fn add_sample(&mut self, hashes: u64, duration: Duration) {
-        self.total_hashes += hashes;
-        self.total_time += duration;
+        self.total_hashes = self.total_hashes.saturating_add(hashes);
+        self.total_time = self.total_time.saturating_add(duration);
 
         let hashes_per_second = hashes as f64 / duration.as_secs_f64();
         self.samples.push(hashes_per_second);
@@ -84,8 +84,10 @@ impl PohStats {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
         let mid = sorted.len() / 2;
-        if sorted.len() % 2 == 0 {
-            (sorted[mid - 1] + sorted[mid]) / 2.0
+        if sorted.len() % 2 == 0 && mid > 0 {
+            #[allow(clippy::arithmetic_side_effects)] // mid > 0 checked above
+            let prev = sorted[mid - 1];
+            (prev + sorted[mid]) / 2.0
         } else {
             sorted[mid]
         }
@@ -123,7 +125,7 @@ impl PohStats {
         // Convert to millions of hashes per second for readability
         let avg_mhps = self.avg_hashes_per_second() / 1_000_000.0;
         let median_mhps = self.median_hashes_per_second() / 1_000_000.0;
-        println!("Performance:              {:.2} MH/s (avg), {:.2} MH/s (median)", avg_mhps, median_mhps);
+        println!("Performance:              {avg_mhps:.2} MH/s (avg), {median_mhps:.2} MH/s (median)");
     }
 }
 
@@ -151,36 +153,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let physical_cores = physical_core_count()?;
 
     println!("System Information:");
-    println!("  Total CPUs:        {}", cpu_count);
-    println!("  Physical cores:    {}", physical_cores);
+    println!("  Total CPUs:        {cpu_count}");
+    println!("  Physical cores:    {physical_cores}");
 
     // Validate CPU ID
     if cpu_id >= cpu_count {
-        eprintln!("Error: CPU {} does not exist (max CPU is {})", cpu_id, cpu_count - 1);
+        let max_cpu = cpu_count.saturating_sub(1);
+        eprintln!("Error: CPU {cpu_id} does not exist (max CPU is {max_cpu})");
         std::process::exit(1);
     }
 
     // Check if CPU is isolated (better for benchmarking)
     let isolated = isolated_cpus()?;
     if isolated.contains(&cpu_id) {
-        println!("  CPU {} status:     ISOLATED (excellent for benchmarking)", cpu_id);
+        println!("  CPU {cpu_id} status:     ISOLATED (excellent for benchmarking)");
     } else {
-        println!("  CPU {} status:     NORMAL (may have interference)", cpu_id);
+        println!("  CPU {cpu_id} status:     NORMAL (may have interference)");
         if !isolated.is_empty() {
-            println!("  Tip: Consider using one of the isolated CPUs: {:?}", isolated);
+            println!("  Tip: Consider using one of the isolated CPUs: {isolated:?}");
         }
     }
 
     // Pin to specified CPU
-    println!("\nPinning to CPU {}...", cpu_id);
+    println!("\nPinning to CPU {cpu_id}...");
     set_cpu_affinity([cpu_id])?;
 
     // Verify affinity
     let affinity = cpu_affinity()?;
     if affinity != vec![cpu_id] {
-        eprintln!("Warning: Failed to pin exclusively to CPU {} (got {:?})", cpu_id, affinity);
+        eprintln!("Warning: Failed to pin exclusively to CPU {cpu_id} (got {affinity:?})");
     } else {
-        println!("Successfully pinned to CPU {}", cpu_id);
+        println!("Successfully pinned to CPU {cpu_id}");
     }
 
     // Get current CPU (Linux-specific)
@@ -188,7 +191,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let current = unsafe { libc::sched_getcpu() };
         if current >= 0 {
-            println!("Currently executing on CPU: {}", current);
+            println!("Currently executing on CPU: {current}");
         }
     }
 
@@ -198,22 +201,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n=== Running PoH Speed Check ===");
     println!("Configuration:");
-    println!("  CPU ID:            {}", cpu_id);
-    println!("  Duration:          {} seconds", timeout_secs);
-    println!("  Hashes/sample:     {}", HASHES_PER_SAMPLE);
-    println!("  Sample interval:   {:?}", SAMPLE_INTERVAL);
+    println!("  CPU ID:            {cpu_id}");
+    println!("  Duration:          {timeout_secs} seconds");
+    println!("  Hashes/sample:     {HASHES_PER_SAMPLE}");
+    println!("  Sample interval:   {SAMPLE_INTERVAL:?}");
     println!("\nRunning...");
 
     let mut stats = PohStats::new();
     let overall_start = Instant::now();
     let mut last_print = Instant::now();
-    let mut sample_count = 0;
+    let mut sample_count: u64 = 0;
 
     // Run until timeout
     while overall_start.elapsed() < timeout {
         let (duration, _final_hash) = compute_hash_time(HASHES_PER_SAMPLE);
         stats.add_sample(HASHES_PER_SAMPLE, duration);
-        sample_count += 1;
+        sample_count = sample_count.saturating_add(1);
 
         // Print progress every second
         if last_print.elapsed() >= Duration::from_secs(1) {
@@ -247,8 +250,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let performance_ratio = stats.avg_hashes_per_second() / solana_target_hps * 100.0;
 
     println!("=== Performance Analysis ===");
-    println!("Solana target:            ~{:.0} hashes/second", solana_target_hps);
-    println!("Your performance:         {:.0}% of target", performance_ratio);
+    println!("Solana target:            ~{solana_target_hps:.0} hashes/second");
+    println!("Your performance:         {performance_ratio:.0}% of target");
 
     if performance_ratio >= 150.0 {
         println!("Result:                   EXCELLENT - Well above requirements");

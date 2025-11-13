@@ -4,8 +4,6 @@
 //! They test actual system interactions including CPU affinity changes.
 
 use agave_cpu_utils::*;
-#[cfg(target_os = "linux")]
-use libc;
 
 #[test]
 #[cfg(target_os = "linux")]
@@ -31,11 +29,11 @@ fn test_set_and_get_affinity() {
         // Permission denied is acceptable in CI/containers
         match result.unwrap_err() {
             CpuAffinityError::Io(ref err)
-                if err.raw_os_error() == Some(libc::EPERM) ||
+                if err.raw_os_error() == Some(1) || // EPERM = 1
                    err.to_string().contains("Operation not permitted") => {
                 eprintln!("Skipping affinity test: insufficient permissions");
             }
-            e => panic!("Unexpected error: {:?}", e),
+            e => panic!("Unexpected error: {e:?}"),
         }
     }
 }
@@ -116,16 +114,14 @@ fn test_isolated_cpus_format() {
                 for &cpu in &cpus {
                     assert!(
                         cpu <= max_cpu,
-                        "Isolated CPU {} exceeds max CPU {}",
-                        cpu,
-                        max_cpu
+                        "Isolated CPU {cpu} exceeds max CPU {max_cpu}"
                     );
                 }
             }
         }
         Err(e) => {
             // Not having isolated CPUs is fine
-            eprintln!("No isolated CPUs or error reading: {:?}", e);
+            eprintln!("No isolated CPUs or error reading: {e:?}");
         }
     }
 }
@@ -142,9 +138,7 @@ fn test_core_mapping_completeness() {
             // However, some CPUs might be offline, so we allow for that
             assert!(
                 mapped_cpu_count <= total_cpus,
-                "Mapped CPUs ({}) should not exceed total CPUs ({})",
-                mapped_cpu_count,
-                total_cpus
+                "Mapped CPUs ({mapped_cpu_count}) should not exceed total CPUs ({total_cpus})"
             );
 
             // If we have any mapping, it should be reasonable
@@ -178,18 +172,15 @@ fn test_physical_core_ratio() {
         // Physical cores should be at most equal to logical CPUs
         assert!(
             physical <= logical,
-            "Physical cores ({}) should not exceed logical CPUs ({})",
-            physical,
-            logical
+            "Physical cores ({physical}) should not exceed logical CPUs ({logical})"
         );
 
         // The ratio should be reasonable (1x to 4x hyperthreading)
         if physical > 0 {
             let ratio = logical / physical;
             assert!(
-                ratio >= 1 && ratio <= 4,
-                "CPU to core ratio ({}) should be between 1 and 4",
-                ratio
+                (1..=4).contains(&ratio),
+                "CPU to core ratio ({ratio}) should be between 1 and 4"
             );
         }
     }

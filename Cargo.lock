@@ -106,6 +106,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "agave-cpu-utils"
+version = "4.0.0-alpha.0"
+dependencies = [
+ "libc",
+ "sha2 0.10.9",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "agave-feature-set"
 version = "4.0.0-alpha.0"
 dependencies = [
@@ -409,6 +418,7 @@ dependencies = [
 name = "agave-validator"
 version = "4.0.0-alpha.0"
 dependencies = [
+ "agave-cpu-utils",
  "agave-geyser-plugin-interface",
  "agave-logger",
  "agave-snapshots",
@@ -607,6 +617,7 @@ dependencies = [
 name = "agave-xdp"
 version = "4.0.0-alpha.0"
 dependencies = [
+ "agave-cpu-utils",
  "agave-xdp-ebpf",
  "aya",
  "caps",
@@ -9513,6 +9524,7 @@ dependencies = [
 name = "solana-poh"
 version = "4.0.0-alpha.0"
 dependencies = [
+ "agave-cpu-utils",
  "agave-logger",
  "arc-swap",
  "assert_matches",

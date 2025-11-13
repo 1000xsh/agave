@@ -15,11 +15,12 @@ fn main() -> Result<(), CpuAffinityError> {
     println!("1. System Information:");
     let cpu_count = cpu_count()?;
     let physical_cores = physical_core_count()?;
-    println!("   Total CPUs: {}", cpu_count);
-    println!("   Physical cores: {}", physical_cores);
+    println!("   Total CPUs: {cpu_count}");
+    println!("   Physical cores: {physical_cores}");
 
-    if physical_cores < cpu_count {
-        println!("   Hyperthreading: ENABLED ({}x)", cpu_count / physical_cores);
+    if physical_cores > 0 && physical_cores < cpu_count {
+        let ratio = cpu_count.checked_div(physical_cores).unwrap_or(1);
+        println!("   Hyperthreading: ENABLED ({ratio}x)");
     } else {
         println!("   Hyperthreading: DISABLED");
     }
@@ -27,21 +28,21 @@ fn main() -> Result<(), CpuAffinityError> {
     // 2. Check current CPU affinity
     println!("\n2. Current CPU Affinity:");
     let current_affinity = cpu_affinity()?;
-    println!("   Thread can run on CPUs: {:?}", current_affinity);
+    println!("   Thread can run on CPUs: {current_affinity:?}");
 
     // 3. Check for isolated CPUs
     println!("\n3. Isolated CPUs (via isolcpus kernel parameter):");
     let isolated = isolated_cpus()?;
     if !isolated.is_empty() {
-        println!("   Found isolated CPUs: {:?}", isolated);
+        println!("   Found isolated CPUs: {isolated:?}");
 
         // Example: Pin to first isolated CPU
         if let Some(&first_isolated) = isolated.first() {
-            println!("\n   Pinning to isolated CPU {}...", first_isolated);
+            println!("\n   Pinning to isolated CPU {first_isolated}...");
             set_cpu_affinity([first_isolated])?;
 
             let new_affinity = cpu_affinity()?;
-            println!("   SUCCESS - Now pinned to CPU: {:?}", new_affinity);
+            println!("   SUCCESS - Now pinned to CPU: {new_affinity:?}");
 
             // Do some work on isolated CPU
             do_work("isolated CPU");
@@ -54,10 +55,10 @@ fn main() -> Result<(), CpuAffinityError> {
     println!("\n4. Physical Core Topology:");
     let core_mapping = core_to_cpus_mapping()?;
     for (core_id, cpus) in core_mapping.iter().take(4) {
-        println!("   Core {} -> CPUs {:?}", core_id, cpus);
+        println!("   Core {core_id} -> CPUs {cpus:?}");
     }
     if core_mapping.len() > 4 {
-        println!("   ... and {} more cores", core_mapping.len() - 4);
+        println!("   ... and {} more cores", core_mapping.len().saturating_sub(4));
     }
 
     // 5. Pin to physical cores only (avoid hyperthreading)
@@ -67,7 +68,7 @@ fn main() -> Result<(), CpuAffinityError> {
         set_affinity_physical_cores_only([0, 1])?;
 
         let new_affinity = cpu_affinity()?;
-        println!("   Now running on CPUs: {:?}", new_affinity);
+        println!("   Now running on CPUs: {new_affinity:?}");
         println!("   (These are the first logical CPUs of each physical core)");
 
         do_work("physical cores 0,1");
@@ -80,7 +81,7 @@ fn main() -> Result<(), CpuAffinityError> {
         set_cpu_affinity([0, 1])?;
 
         let new_affinity = cpu_affinity()?;
-        println!("   Now running on CPUs: {:?}", new_affinity);
+        println!("   Now running on CPUs: {new_affinity:?}");
 
         do_work("CPUs 0,1");
     }
@@ -98,14 +99,14 @@ fn main() -> Result<(), CpuAffinityError> {
 
 /// Simulate some CPU-bound work
 fn do_work(context: &str) {
-    println!("   Working on {}...", context);
+    println!("   Working on {context}...");
 
     // Get current CPU (Linux-specific, for demonstration)
     #[cfg(target_os = "linux")]
     {
         let cpu = unsafe { libc::sched_getcpu() };
         if cpu >= 0 {
-            println!("   Actually running on CPU: {}", cpu);
+            println!("   Actually running on CPU: {cpu}");
         }
     }
 
@@ -117,5 +118,5 @@ fn do_work(context: &str) {
     }
 
     let elapsed = start.elapsed();
-    println!("   Work completed in {:?} (sum={})", elapsed, sum);
+    println!("   Work completed in {elapsed:?} (sum={sum})");
 }

@@ -282,7 +282,7 @@ pub fn isolated_cpus() -> Result<Vec<usize>, CpuAffinityError> {
             if content.is_empty() {
                 return Ok(Vec::new());
             }
-            parse_cpu_range_list(&content)
+            parse_cpu_range_list(content)
         }
         Err(_) => {
             // File doesn't exist or can't be read - no isolated CPUs
@@ -312,18 +312,18 @@ fn parse_cpu_range_list(s: &str) -> Result<Vec<usize>, CpuAffinityError> {
             let start = start_str
                 .trim()
                 .parse::<usize>()
-                .map_err(|_| CpuAffinityError::ParseError(format!("Invalid CPU range: {}", part)))?;
+                .map_err(|_| CpuAffinityError::ParseError(format!("Invalid CPU range: {part}")))?;
             let end = end_str
                 .trim()
                 .parse::<usize>()
-                .map_err(|_| CpuAffinityError::ParseError(format!("Invalid CPU range: {}", part)))?;
+                .map_err(|_| CpuAffinityError::ParseError(format!("Invalid CPU range: {part}")))?;
 
             cpus.extend(start..=end);
         } else {
             // Single CPU
             let cpu = part
                 .parse::<usize>()
-                .map_err(|_| CpuAffinityError::ParseError(format!("Invalid CPU ID: {}", part)))?;
+                .map_err(|_| CpuAffinityError::ParseError(format!("Invalid CPU ID: {part}")))?;
             cpus.insert(cpu);
         }
     }
@@ -400,7 +400,7 @@ mod tests {
             Err(CpuAffinityError::NotSupported) => {
                 // Expected on non-Linux platforms
             }
-            Err(e) => panic!("Unexpected error: {:?}", e),
+            Err(e) => panic!("Unexpected error: {e:?}"),
         }
     }
 
@@ -413,7 +413,7 @@ mod tests {
                 assert!(max < CPU_SETSIZE, "max_cpu_id should be less than CPU_SETSIZE");
                 // max is usize, so it's always >= 0
             }
-            Err(e) => panic!("Failed to get max_cpu_id: {:?}", e),
+            Err(e) => panic!("Failed to get max_cpu_id: {e:?}"),
         }
     }
 

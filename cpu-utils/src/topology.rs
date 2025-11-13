@@ -38,7 +38,7 @@ pub fn physical_core_count() -> Result<usize, CpuAffinityError> {
     let mut seen_cores = HashSet::new();
 
     for cpu in 0..=max_cpu {
-        let core_id_path = format!("/sys/devices/system/cpu/cpu{}/topology/core_id", cpu);
+        let core_id_path = format!("/sys/devices/system/cpu/cpu{cpu}/topology/core_id");
 
         if let Ok(content) = fs::read_to_string(&core_id_path) {
             if let Ok(core_id) = content.trim().parse::<usize>() {
@@ -48,7 +48,7 @@ pub fn physical_core_count() -> Result<usize, CpuAffinityError> {
                 // - Even with NUMA and multiple sockets, core_id rarely exceeds max_cpu
                 // - This guards against corrupted sysfs data
                 // - Factor of 2 provides margin for unusual topologies
-                if core_id <= max_cpu * 2 {
+                if core_id <= max_cpu.saturating_mul(2) {
                     seen_cores.insert(core_id);
                 }
             }
@@ -101,14 +101,14 @@ pub fn core_to_cpus_mapping() -> Result<BTreeMap<usize, Vec<usize>>, CpuAffinity
     let mut mapping: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
 
     for cpu in 0..=max_cpu {
-        let core_id_path = format!("/sys/devices/system/cpu/cpu{}/topology/core_id", cpu);
+        let core_id_path = format!("/sys/devices/system/cpu/cpu{cpu}/topology/core_id");
 
         if let Ok(content) = fs::read_to_string(&core_id_path) {
             if let Ok(core_id) = content.trim().parse::<usize>() {
                 // Sanity check: same reasoning as in physical_core_count()
                 // Guards against corrupted sysfs data while allowing for unusual topologies
-                if core_id <= max_cpu * 2 {
-                    mapping.entry(core_id).or_insert_with(Vec::new).push(cpu);
+                if core_id <= max_cpu.saturating_mul(2) {
+                    mapping.entry(core_id).or_default().push(cpu);
                 }
             }
         }
@@ -212,16 +212,14 @@ mod tests {
                 if let Ok(cpu_count) = cpu_count() {
                     assert!(
                         count <= cpu_count,
-                        "Physical cores ({}) should not exceed total CPUs ({})",
-                        count,
-                        cpu_count
+                        "Physical cores ({count}) should not exceed total CPUs ({cpu_count})"
                     );
                 }
             }
             Err(CpuAffinityError::NotSupported) => {
                 // Expected on non-Linux platforms
             }
-            Err(e) => panic!("Unexpected error: {:?}", e),
+            Err(e) => panic!("Unexpected error: {e:?}"),
         }
     }
 
@@ -233,8 +231,7 @@ mod tests {
             for (core_id, cpus) in &mapping {
                 assert!(
                     !cpus.is_empty(),
-                    "Core {} should have at least one CPU",
-                    core_id
+                    "Core {core_id} should have at least one CPU"
                 );
 
                 // CPUs should be sorted
@@ -242,8 +239,7 @@ mod tests {
                 sorted.sort_unstable();
                 assert_eq!(
                     cpus, &sorted,
-                    "CPUs for core {} should be sorted",
-                    core_id
+                    "CPUs for core {core_id} should be sorted"
                 );
             }
 
@@ -320,11 +316,10 @@ mod tests {
         // Physical cores * threads per core should roughly equal total CPUs
         if let (Ok(physical), Ok(total)) = (physical_core_count(), cpu_count()) {
             if physical > 0 {
-                let threads_per_core = (total + physical - 1) / physical; // Round up
+                let threads_per_core = total.div_ceil(physical);
                 assert!(
-                    threads_per_core >= 1 && threads_per_core <= 4,
-                    "Threads per core ({}) should be between 1 and 4",
-                    threads_per_core
+                    (1..=4).contains(&threads_per_core),
+                    "Threads per core ({threads_per_core}) should be between 1 and 4"
                 );
             }
         }
