@@ -1,7 +1,6 @@
 //! Error types for CPU affinity operations.
 
-use std::io;
-use thiserror::Error;
+use {std::io, thiserror::Error};
 
 /// Errors that can occur during CPU affinity operations.
 #[derive(Error, Debug)]
@@ -32,28 +31,6 @@ pub enum CpuAffinityError {
     ParseError(String),
 }
 
-// PartialEq for testing
-impl PartialEq for CpuAffinityError {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Io(a), Self::Io(b)) => {
-                a.kind() == b.kind() && a.to_string() == b.to_string()
-            }
-            (Self::NotSupported, Self::NotSupported) => true,
-            (Self::InvalidCpu { cpu: a1, max: a2 }, Self::InvalidCpu { cpu: b1, max: b2 }) => {
-                a1 == b1 && a2 == b2
-            }
-            (
-                Self::InvalidPhysicalCore { core: a1, max: a2 },
-                Self::InvalidPhysicalCore { core: b1, max: b2 },
-            ) => a1 == b1 && a2 == b2,
-            (Self::EmptyCpuList, Self::EmptyCpuList) => true,
-            (Self::ParseError(a), Self::ParseError(b)) => a == b,
-            _ => false,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,7 +56,10 @@ mod tests {
         );
 
         let err = CpuAffinityError::ParseError("bad input".to_string());
-        assert_eq!(err.to_string(), "Failed to parse CPU specification: bad input");
+        assert_eq!(
+            err.to_string(),
+            "Failed to parse CPU specification: bad input"
+        );
     }
 
     #[test]
@@ -93,15 +73,5 @@ mod tests {
             }
             _ => panic!("Expected Io error"),
         }
-    }
-
-    #[test]
-    fn test_error_equality() {
-        let err1 = CpuAffinityError::InvalidCpu { cpu: 10, max: 7 };
-        let err2 = CpuAffinityError::InvalidCpu { cpu: 10, max: 7 };
-        assert_eq!(err1, err2);
-
-        let err3 = CpuAffinityError::InvalidCpu { cpu: 5, max: 7 };
-        assert_ne!(err1, err3);
     }
 }

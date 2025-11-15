@@ -9,10 +9,14 @@
 //!   cargo run --example cpu_spinner -- 0 10  # Pin to CPU 0, run for 10 seconds
 //!   cargo run --example cpu_spinner -- 2 30  # Pin to CPU 2, run for 30 seconds
 
-use agave_cpu_utils::*;
-use sha2::{Digest, Sha256};
-use std::env;
-use std::time::{Duration, Instant};
+use {
+    agave_cpu_utils::*,
+    sha2::{Digest, Sha256},
+    std::{
+        env,
+        time::{Duration, Instant},
+    },
+};
 
 /// SHA256 hash type (32 bytes)
 type Hash = [u8; 32];
@@ -99,12 +103,15 @@ impl PohStats {
         }
 
         let mean = self.samples.iter().sum::<f64>() / self.samples.len() as f64;
-        let variance = self.samples.iter()
+        let variance = self
+            .samples
+            .iter()
             .map(|x| {
                 let diff = x - mean;
                 diff * diff
             })
-            .sum::<f64>() / self.samples.len() as f64;
+            .sum::<f64>()
+            / self.samples.len() as f64;
 
         variance.sqrt()
     }
@@ -115,8 +122,14 @@ impl PohStats {
         println!("Total time:               {:?}", self.total_time);
         println!("Samples collected:        {}", self.samples.len());
         println!();
-        println!("Average hashes/second:    {:.0}", self.avg_hashes_per_second());
-        println!("Median hashes/second:     {:.0}", self.median_hashes_per_second());
+        println!(
+            "Average hashes/second:    {:.0}",
+            self.avg_hashes_per_second()
+        );
+        println!(
+            "Median hashes/second:     {:.0}",
+            self.median_hashes_per_second()
+        );
         println!("Min hashes/second:        {:.0}", self.min_hps);
         println!("Max hashes/second:        {:.0}", self.max_hps);
         println!("Standard deviation:       {:.0}", self.stddev());
@@ -125,7 +138,9 @@ impl PohStats {
         // Convert to millions of hashes per second for readability
         let avg_mhps = self.avg_hashes_per_second() / 1_000_000.0;
         let median_mhps = self.median_hashes_per_second() / 1_000_000.0;
-        println!("Performance:              {avg_mhps:.2} MH/s (avg), {median_mhps:.2} MH/s (median)");
+        println!(
+            "Performance:              {avg_mhps:.2} MH/s (avg), {median_mhps:.2} MH/s (median)"
+        );
     }
 }
 
@@ -196,8 +211,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Configuration
-    const HASHES_PER_SAMPLE: u64 = 1_000_000;  // 1M hashes per sample
-    const SAMPLE_INTERVAL: Duration = Duration::from_millis(100);  // Sample every 100ms
+    const HASHES_PER_SAMPLE: u64 = 1_000_000; // 1M hashes per sample
+    const SAMPLE_INTERVAL: Duration = Duration::from_millis(100); // Sample every 100ms
 
     println!("\n=== Running PoH Speed Check ===");
     println!("Configuration:");
@@ -225,9 +240,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let current_hps = HASHES_PER_SAMPLE as f64 / duration.as_secs_f64();
             let current_mhps = current_hps / 1_000_000.0;
 
-            print!("\r[{:3}/{:3}s] Sample #{:4}: {:.2} MH/s | Avg: {:.2} MH/s | Remaining: {:2}s    ",
-                   elapsed, timeout_secs, sample_count, current_mhps,
-                   stats.avg_hashes_per_second() / 1_000_000.0, remaining);
+            print!(
+                "\r[{:3}/{:3}s] Sample #{:4}: {:.2} MH/s | Avg: {:.2} MH/s | Remaining: {:2}s    ",
+                elapsed,
+                timeout_secs,
+                sample_count,
+                current_mhps,
+                stats.avg_hashes_per_second() / 1_000_000.0,
+                remaining
+            );
 
             // Force flush to update the line
             use std::io::{self, Write};
@@ -246,7 +267,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     stats.print_stats();
 
     // Comparison with Solana target (approximate)
-    let solana_target_hps = 2_000_000.0;  // ~2M hashes/sec for 400ms slots with 800K hashes
+    let solana_target_hps = 2_000_000.0; // ~2M hashes/sec for 400ms slots with 800K hashes
     let performance_ratio = stats.avg_hashes_per_second() / solana_target_hps * 100.0;
 
     println!("=== Performance Analysis ===");

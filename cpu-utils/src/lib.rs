@@ -53,18 +53,8 @@ mod affinity;
 mod error;
 mod topology;
 
-pub use error::CpuAffinityError;
-
-pub use affinity::{
-    cpu_affinity,
-    cpu_count,
-    isolated_cpus,
-    max_cpu_id,
-    set_cpu_affinity,
-};
-
-pub use topology::{
-    core_to_cpus_mapping,
-    physical_core_count,
-    set_affinity_physical_cores_only,
+pub use {
+    affinity::{cpu_affinity, cpu_count, isolated_cpus, max_cpu_id, set_cpu_affinity},
+    error::CpuAffinityError,
+    topology::{core_to_cpus_mapping, physical_core_count, set_affinity_physical_cores_only},
 };

@@ -67,10 +67,7 @@ use {
         quic::{QuicStreamerConfig, SimpleQosQuicStreamerConfig, SwQosQuicStreamerConfig},
     },
     solana_tpu_client::tpu_client::DEFAULT_TPU_ENABLE_UDP,
-    solana_turbine::{
-        broadcast_stage::BroadcastStageType,
-        xdp::XdpConfig,
-    },
+    solana_turbine::{broadcast_stage::BroadcastStageType, xdp::XdpConfig},
     solana_validator_exit::Exit,
     std::{
         collections::HashSet,
@@ -665,8 +662,7 @@ pub fn execute(
         .cloned()
         .collect::<HashSet<_>>();
     if !reserved.is_empty() {
-        let available = (0..agave_cpu_utils::cpu_count().unwrap_or(0))
-            .collect::<HashSet<_>>();
+        let available = (0..agave_cpu_utils::cpu_count().unwrap_or(0)).collect::<HashSet<_>>();
         let available = available.difference(&reserved);
         agave_cpu_utils::set_cpu_affinity(available.into_iter().copied()).unwrap();
     }

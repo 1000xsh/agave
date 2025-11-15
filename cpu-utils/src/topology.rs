@@ -1,9 +1,15 @@
 //! CPU topology detection and physical core management.
 
-use crate::affinity::{cpu_count, max_cpu_id, set_cpu_affinity};
-use crate::error::CpuAffinityError;
-use std::collections::{BTreeMap, HashSet};
-use std::fs;
+use {
+    crate::{
+        affinity::{cpu_count, max_cpu_id, set_cpu_affinity},
+        error::CpuAffinityError,
+    },
+    std::{
+        collections::{BTreeMap, HashSet},
+        fs,
+    },
+};
 
 /// Get the number of physical CPU cores (excluding hyperthreads).
 ///
@@ -237,17 +243,12 @@ mod tests {
                 // CPUs should be sorted
                 let mut sorted = cpus.clone();
                 sorted.sort_unstable();
-                assert_eq!(
-                    cpus, &sorted,
-                    "CPUs for core {core_id} should be sorted"
-                );
+                assert_eq!(cpus, &sorted, "CPUs for core {core_id} should be sorted");
             }
 
             // Total CPUs in mapping should not exceed system CPU count
             if let Ok(total_cpus) = cpu_count() {
-                let mapped_cpus: HashSet<_> = mapping.values()
-                    .flat_map(|v| v.iter())
-                    .collect();
+                let mapped_cpus: HashSet<_> = mapping.values().flat_map(|v| v.iter()).collect();
                 assert!(
                     mapped_cpus.len() <= total_cpus,
                     "Mapped CPUs count ({}) should not exceed total CPUs ({})",
@@ -296,18 +297,18 @@ mod tests {
     #[test]
     #[cfg(not(target_os = "linux"))]
     fn test_not_supported_on_non_linux() {
-        assert_eq!(
+        assert!(matches!(
             physical_core_count().unwrap_err(),
             CpuAffinityError::NotSupported
-        );
-        assert_eq!(
+        ));
+        assert!(matches!(
             core_to_cpus_mapping().unwrap_err(),
             CpuAffinityError::NotSupported
-        );
-        assert_eq!(
+        ));
+        assert!(matches!(
             set_affinity_physical_cores_only([0]).unwrap_err(),
             CpuAffinityError::NotSupported
-        );
+        ));
     }
 
     #[test]
