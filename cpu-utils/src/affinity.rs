@@ -1,9 +1,9 @@
 //! Core CPU affinity operations.
 
-use crate::error::CpuAffinityError;
-use std::collections::HashSet;
-use std::fs;
-use std::io;
+use {
+    crate::error::CpuAffinityError,
+    std::{collections::HashSet, fs, io},
+};
 
 /// Maximum CPU ID that can be used with CPU_SET.
 ///
@@ -44,9 +44,7 @@ const CPU_SETSIZE: usize = 1024;
 /// Returns [`CpuAffinityError::NotSupported`] on non-Linux platforms.
 ///
 #[cfg(target_os = "linux")]
-pub fn set_cpu_affinity(
-    cpus: impl IntoIterator<Item = usize>,
-) -> Result<(), CpuAffinityError> {
+pub fn set_cpu_affinity(cpus: impl IntoIterator<Item = usize>) -> Result<(), CpuAffinityError> {
     // Initialize CPU set
     // safety: cpu_set_t is a POD type, zero-initialization is standard
     let mut cpu_set: libc::cpu_set_t = unsafe { std::mem::zeroed() };
@@ -102,9 +100,7 @@ pub fn set_cpu_affinity(
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn set_cpu_affinity(
-    _cpus: impl IntoIterator<Item = usize>,
-) -> Result<(), CpuAffinityError> {
+pub fn set_cpu_affinity(_cpus: impl IntoIterator<Item = usize>) -> Result<(), CpuAffinityError> {
     Err(CpuAffinityError::NotSupported)
 }
 
@@ -361,10 +357,7 @@ mod tests {
         );
 
         // Test duplicates are removed
-        assert_eq!(
-            parse_cpu_range_list("0,1,0,2,1").unwrap(),
-            vec![0, 1, 2]
-        );
+        assert_eq!(parse_cpu_range_list("0,1,0,2,1").unwrap(), vec![0, 1, 2]);
 
         // Test empty string
         assert_eq!(parse_cpu_range_list("").unwrap(), Vec::<usize>::new());
@@ -410,7 +403,10 @@ mod tests {
         match max_cpu_id() {
             Ok(max) => {
                 // Most systems have < 1024 CPUs
-                assert!(max < CPU_SETSIZE, "max_cpu_id should be less than CPU_SETSIZE");
+                assert!(
+                    max < CPU_SETSIZE,
+                    "max_cpu_id should be less than CPU_SETSIZE"
+                );
                 // max is usize, so it's always >= 0
             }
             Err(e) => panic!("Failed to get max_cpu_id: {e:?}"),
@@ -420,10 +416,22 @@ mod tests {
     #[test]
     #[cfg(not(target_os = "linux"))]
     fn test_not_supported_on_non_linux() {
-        assert!(matches!(set_cpu_affinity([0]).unwrap_err(), CpuAffinityError::NotSupported));
-        assert!(matches!(cpu_affinity().unwrap_err(), CpuAffinityError::NotSupported));
-        assert!(matches!(max_cpu_id().unwrap_err(), CpuAffinityError::NotSupported));
-        assert!(matches!(isolated_cpus().unwrap_err(), CpuAffinityError::NotSupported));
+        assert!(matches!(
+            set_cpu_affinity([0]).unwrap_err(),
+            CpuAffinityError::NotSupported
+        ));
+        assert!(matches!(
+            cpu_affinity().unwrap_err(),
+            CpuAffinityError::NotSupported
+        ));
+        assert!(matches!(
+            max_cpu_id().unwrap_err(),
+            CpuAffinityError::NotSupported
+        ));
+        assert!(matches!(
+            isolated_cpus().unwrap_err(),
+            CpuAffinityError::NotSupported
+        ));
     }
 
     #[test]

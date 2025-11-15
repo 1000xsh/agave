@@ -58,7 +58,10 @@ fn main() -> Result<(), CpuAffinityError> {
         println!("   Core {core_id} -> CPUs {cpus:?}");
     }
     if core_mapping.len() > 4 {
-        println!("   ... and {} more cores", core_mapping.len().saturating_sub(4));
+        println!(
+            "   ... and {} more cores",
+            core_mapping.len().saturating_sub(4)
+        );
     }
 
     // 5. Pin to physical cores only (avoid hyperthreading)

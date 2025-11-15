@@ -134,11 +134,14 @@ impl PohService {
                         Ok(cpu_count) => {
                             if pinned_cpu_core >= cpu_count {
                                 panic!(
-                                    "POH service requested CPU {pinned_cpu_core} but only {cpu_count} CPUs available"
+                                    "POH service requested CPU {pinned_cpu_core} but only \
+                                     {cpu_count} CPUs available"
                                 );
                             }
-                            agave_cpu_utils::set_cpu_affinity([pinned_cpu_core])
-                                .expect("Failed to set CPU affinity for POH service. This is critical for performance.");
+                            agave_cpu_utils::set_cpu_affinity([pinned_cpu_core]).expect(
+                                "Failed to set CPU affinity for POH service. This is critical for \
+                                 performance.",
+                            );
                         }
                         Err(e) => {
                             panic!("Failed to determine CPU count for POH service affinity: {e:?}");

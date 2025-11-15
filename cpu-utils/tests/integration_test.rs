@@ -19,8 +19,7 @@ fn test_set_and_get_affinity() {
         assert_eq!(new_affinity, vec![0], "Affinity should be set to CPU 0");
 
         // Restore original affinity
-        set_cpu_affinity(original_affinity.clone())
-            .expect("Failed to restore original affinity");
+        set_cpu_affinity(original_affinity.clone()).expect("Failed to restore original affinity");
 
         // Verify restoration
         let restored = cpu_affinity().expect("Failed to get restored affinity");
@@ -30,7 +29,8 @@ fn test_set_and_get_affinity() {
         match result.unwrap_err() {
             CpuAffinityError::Io(ref err)
                 if err.raw_os_error() == Some(1) || // EPERM = 1
-                   err.to_string().contains("Operation not permitted") => {
+                   err.to_string().contains("Operation not permitted") =>
+            {
                 eprintln!("Skipping affinity test: insufficient permissions");
             }
             e => panic!("Unexpected error: {e:?}"),
@@ -71,13 +71,11 @@ fn test_physical_cores_affinity() {
 
                 if result.is_ok() {
                     // Get the mapping to verify
-                    let mapping = core_to_cpus_mapping()
-                        .expect("Failed to get core mapping");
+                    let mapping = core_to_cpus_mapping().expect("Failed to get core mapping");
 
                     if let Some(core_0_cpus) = mapping.get(&0) {
                         if let Some(&first_cpu) = core_0_cpus.first() {
-                            let new_affinity = cpu_affinity()
-                                .expect("Failed to get new affinity");
+                            let new_affinity = cpu_affinity().expect("Failed to get new affinity");
                             assert!(
                                 new_affinity.contains(&first_cpu),
                                 "Should be pinned to first CPU of core 0"
@@ -143,10 +141,7 @@ fn test_core_mapping_completeness() {
 
             // If we have any mapping, it should be reasonable
             if !mapping.is_empty() {
-                assert!(
-                    mapped_cpu_count > 0,
-                    "Should have at least one CPU mapped"
-                );
+                assert!(mapped_cpu_count > 0, "Should have at least one CPU mapped");
             }
         }
     }
@@ -157,11 +152,7 @@ fn test_core_mapping_completeness() {
 fn test_cpu_count_consistency() {
     // cpu_count should equal max_cpu_id + 1
     if let (Ok(count), Ok(max_id)) = (cpu_count(), max_cpu_id()) {
-        assert_eq!(
-            count,
-            max_id + 1,
-            "CPU count should equal max_cpu_id + 1"
-        );
+        assert_eq!(count, max_id + 1, "CPU count should equal max_cpu_id + 1");
     }
 }
 

@@ -1,7 +1,6 @@
 //! Error types for CPU affinity operations.
 
-use std::io;
-use thiserror::Error;
+use {std::io, thiserror::Error};
 
 /// Errors that can occur during CPU affinity operations.
 #[derive(Error, Debug)]
@@ -57,7 +56,10 @@ mod tests {
         );
 
         let err = CpuAffinityError::ParseError("bad input".to_string());
-        assert_eq!(err.to_string(), "Failed to parse CPU specification: bad input");
+        assert_eq!(
+            err.to_string(),
+            "Failed to parse CPU specification: bad input"
+        );
     }
 
     #[test]

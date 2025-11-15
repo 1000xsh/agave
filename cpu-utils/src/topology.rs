@@ -1,9 +1,15 @@
 //! CPU topology detection and physical core management.
 
-use crate::affinity::{cpu_count, max_cpu_id, set_cpu_affinity};
-use crate::error::CpuAffinityError;
-use std::collections::{BTreeMap, HashSet};
-use std::fs;
+use {
+    crate::{
+        affinity::{cpu_count, max_cpu_id, set_cpu_affinity},
+        error::CpuAffinityError,
+    },
+    std::{
+        collections::{BTreeMap, HashSet},
+        fs,
+    },
+};
 
 /// Get the number of physical CPU cores (excluding hyperthreads).
 ///
@@ -237,17 +243,12 @@ mod tests {
                 // CPUs should be sorted
                 let mut sorted = cpus.clone();
                 sorted.sort_unstable();
-                assert_eq!(
-                    cpus, &sorted,
-                    "CPUs for core {core_id} should be sorted"
-                );
+                assert_eq!(cpus, &sorted, "CPUs for core {core_id} should be sorted");
             }
 
             // Total CPUs in mapping should not exceed system CPU count
             if let Ok(total_cpus) = cpu_count() {
-                let mapped_cpus: HashSet<_> = mapping.values()
-                    .flat_map(|v| v.iter())
-                    .collect();
+                let mapped_cpus: HashSet<_> = mapping.values().flat_map(|v| v.iter()).collect();
                 assert!(
                     mapped_cpus.len() <= total_cpus,
                     "Mapped CPUs count ({}) should not exceed total CPUs ({})",
