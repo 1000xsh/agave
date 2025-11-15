@@ -426,7 +426,6 @@ dependencies = [
  "chrono",
  "clap 2.33.3",
  "console 0.16.1",
- "core_affinity",
  "crossbeam-channel",
  "fd-lock",
  "indicatif 0.18.2",
@@ -2184,18 +2183,6 @@ name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
-
-[[package]]
-name = "core_affinity"
-version = "0.5.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f8a03115cc34fb0d7c321dd154a3914b3ca082ccc5c11d91bf7117dbbe7171f"
-dependencies = [
- "kernel32-sys",
- "libc",
- "num_cpus",
- "winapi 0.2.8",
-]
 
 [[package]]
 name = "cpufeatures"
@@ -9529,7 +9516,6 @@ dependencies = [
  "arc-swap",
  "assert_matches",
  "bincode",
- "core_affinity",
  "criterion",
  "crossbeam-channel",
  "log",

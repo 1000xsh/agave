@@ -207,28 +207,28 @@ fn test_affinity_deduplication() {
 #[cfg(not(target_os = "linux"))]
 fn test_non_linux_returns_not_supported() {
     // All functions should return NotSupported on non-Linux platforms
-    assert_eq!(
+    assert!(matches!(
         set_cpu_affinity([0]).unwrap_err(),
         CpuAffinityError::NotSupported
-    );
-    assert_eq!(
+    ));
+    assert!(matches!(
         cpu_affinity().unwrap_err(),
         CpuAffinityError::NotSupported
-    );
-    assert_eq!(
+    ));
+    assert!(matches!(
         isolated_cpus().unwrap_err(),
         CpuAffinityError::NotSupported
-    );
-    assert_eq!(
+    ));
+    assert!(matches!(
         physical_core_count().unwrap_err(),
         CpuAffinityError::NotSupported
-    );
-    assert_eq!(
+    ));
+    assert!(matches!(
         core_to_cpus_mapping().unwrap_err(),
         CpuAffinityError::NotSupported
-    );
-    assert_eq!(
+    ));
+    assert!(matches!(
         set_affinity_physical_cores_only([0]).unwrap_err(),
         CpuAffinityError::NotSupported
-    );
+    ));
 }

@@ -296,18 +296,18 @@ mod tests {
     #[test]
     #[cfg(not(target_os = "linux"))]
     fn test_not_supported_on_non_linux() {
-        assert_eq!(
+        assert!(matches!(
             physical_core_count().unwrap_err(),
             CpuAffinityError::NotSupported
-        );
-        assert_eq!(
+        ));
+        assert!(matches!(
             core_to_cpus_mapping().unwrap_err(),
             CpuAffinityError::NotSupported
-        );
-        assert_eq!(
+        ));
+        assert!(matches!(
             set_affinity_physical_cores_only([0]).unwrap_err(),
             CpuAffinityError::NotSupported
-        );
+        ));
     }
 
     #[test]

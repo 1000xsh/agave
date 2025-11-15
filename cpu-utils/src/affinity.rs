@@ -244,7 +244,7 @@ pub fn max_cpu_id() -> Result<usize, CpuAffinityError> {
 /// Returns [`CpuAffinityError::Io`] if unable to determine CPU count.
 /// Returns [`CpuAffinityError::NotSupported`] on non-Linux platforms.
 pub fn cpu_count() -> Result<usize, CpuAffinityError> {
-    Ok(max_cpu_id()? + 1)
+    Ok(max_cpu_id()?.saturating_add(1))
 }
 
 /// Get the list of isolated CPUs.
@@ -420,10 +420,10 @@ mod tests {
     #[test]
     #[cfg(not(target_os = "linux"))]
     fn test_not_supported_on_non_linux() {
-        assert_eq!(set_cpu_affinity([0]).unwrap_err(), CpuAffinityError::NotSupported);
-        assert_eq!(cpu_affinity().unwrap_err(), CpuAffinityError::NotSupported);
-        assert_eq!(max_cpu_id().unwrap_err(), CpuAffinityError::NotSupported);
-        assert_eq!(isolated_cpus().unwrap_err(), CpuAffinityError::NotSupported);
+        assert!(matches!(set_cpu_affinity([0]).unwrap_err(), CpuAffinityError::NotSupported));
+        assert!(matches!(cpu_affinity().unwrap_err(), CpuAffinityError::NotSupported));
+        assert!(matches!(max_cpu_id().unwrap_err(), CpuAffinityError::NotSupported));
+        assert!(matches!(isolated_cpus().unwrap_err(), CpuAffinityError::NotSupported));
     }
 
     #[test]
