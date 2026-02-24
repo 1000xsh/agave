@@ -1,6 +1,5 @@
 #[cfg(target_os = "linux")]
 use {
-    agave_cpu_utils::{cpu_count, set_cpu_affinity},
     crate::{
         device::{NetworkDevice, QueueId},
         load_xdp_program,
@@ -9,6 +8,7 @@ use {
         tx_loop::{TxLoop, TxLoopBuilder, TxLoopConfigBuilder},
         umem::{OwnedUmem, PageAlignedMemory},
     },
+    agave_cpu_utils::{cpu_count, set_cpu_affinity},
     arc_swap::ArcSwap,
     aya::Ebpf,
     crossbeam_channel::TryRecvError,
