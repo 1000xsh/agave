@@ -466,7 +466,6 @@ dependencies = [
  "aya",
  "bytes",
  "caps",
- "core_affinity",
  "crossbeam-channel",
  "libc",
  "log",

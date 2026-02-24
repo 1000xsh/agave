@@ -24,4 +24,3 @@ thiserror = { workspace = true }
 agave-xdp-ebpf = { workspace = true }
 aya = { workspace = true }
 caps = { workspace = true }
-core_affinity = { workspace = true }
