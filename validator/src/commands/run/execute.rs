@@ -6,13 +6,14 @@ use {
         commands::{FromClapArgMatches, run::args::RunArgs},
         ledger_lockfile, lock_ledger,
     },
+    agave_cpu_utils,
     agave_snapshots::{
         ArchiveFormat, SnapshotInterval, SnapshotVersion,
         paths::BANK_SNAPSHOTS_DIR,
         snapshot_config::{SnapshotConfig, SnapshotUsage},
     },
     agave_votor::vote_history_storage,
-    agave_xdp::{set_cpu_affinity, transmitter::XdpConfig},
+    agave_xdp::transmitter::XdpConfig,
     clap::{ArgMatches, crate_name, value_t, value_t_or_exit, values_t, values_t_or_exit},
     crossbeam_channel::unbounded,
     log::*,
@@ -393,20 +394,16 @@ pub fn execute(
     #[cfg(not(target_os = "linux"))]
     let xdp_builder_with_src_addr = None;
 
-    let reserved = retransmit_xdp
-        .map(|xdp| xdp.cpus.clone())
-        .unwrap_or_default()
-        .iter()
-        .cloned()
-        .collect::<HashSet<_>>();
-    if !reserved.is_empty() {
-        let available = core_affinity::get_core_ids()
-            .unwrap_or_default()
+    let reserved_cores: HashSet<_> = retransmit_xdp
+        .as_ref()
+        .into_iter()
+        .flat_map(|xdp| xdp.cpus.iter().copied().map(agave_cpu_utils::CpuId))
+        .collect();
+    if !reserved_cores.is_empty() {
+        let unreserved_cores = agave_cpu_utils::online_cpus()?
             .into_iter()
-            .map(|core_id| core_id.id)
-            .collect::<HashSet<_>>();
-        let available = available.difference(&reserved);
-        set_cpu_affinity(available.into_iter().copied()).unwrap();
+            .filter(|core| !reserved_cores.contains(core));
+        agave_cpu_utils::set_cpu_affinity(None, unreserved_cores)?;
     }
 
     solana_core::validator::report_target_features();

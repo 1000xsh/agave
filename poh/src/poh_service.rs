@@ -146,9 +146,16 @@ impl PohService {
                     // PoH service runs in a tight loop, generating hashes as fast as possible.
                     // Let's dedicate one of the CPU cores to this thread so that it can gain
                     // from cache performance.
-                    if let Some(cores) = core_affinity::get_core_ids() {
-                        core_affinity::set_for_current(cores[pinned_cpu_core]);
-                    }
+                    agave_cpu_utils::set_cpu_affinity(
+                        None,
+                        [agave_cpu_utils::CpuId(pinned_cpu_core)],
+                    )
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "Failed to set CPU affinity for POH service to CPU {pinned_cpu_core}: \
+                             {e:?}. This is critical for performance."
+                        )
+                    });
                     Self::tick_producer(
                         poh_recorder,
                         &poh_config,

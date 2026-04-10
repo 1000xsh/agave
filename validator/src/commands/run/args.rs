@@ -852,12 +852,11 @@ pub fn add_args<'a>(app: App<'a, 'a>, default_args: &'a DefaultArgs) -> App<'a, 
             .takes_value(true)
             .value_name("CPU_CORE_INDEX")
             .validator(|s| {
-                let core_index = usize::from_str(&s).map_err(|e| e.to_string())?;
-                let max_index = core_affinity::get_core_ids()
-                    .map(|cids| cids.len() - 1)
-                    .unwrap_or(0);
-                if core_index > max_index {
-                    return Err(format!("core index must be in the range [0, {max_index}]"));
+                let core_index =
+                    agave_cpu_utils::CpuId(usize::from_str(&s).map_err(|e| e.to_string())?);
+                let online = agave_cpu_utils::online_cpus().map_err(|e| e.to_string())?;
+                if online.binary_search(&core_index).is_err() {
+                    return Err(format!("CPU {core_index} is not online"));
                 }
                 Ok(())
             })

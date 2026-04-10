@@ -5,11 +5,11 @@ use {
         load_xdp_program,
         route::{RouteTable, Router, RoutingTables},
         route_monitor::RouteMonitor,
-        set_cpu_affinity,
         tx_loop::TxPacket,
         tx_loop::{TxLoop, TxLoopBuilder, TxLoopConfigBuilder},
         umem::{OwnedUmem, PageAlignedMemory},
     },
+    agave_cpu_utils::{CpuId, online_cpus, set_cpu_affinity},
     arc_swap::ArcSwap,
     aya::Ebpf,
     crossbeam_channel::TryRecvError,
@@ -215,16 +215,17 @@ impl TransmitterBuilder {
         tx_loop_config_builder.zero_copy(zero_copy);
         let tx_loop_config = tx_loop_config_builder.build_with_src_device(&dev);
 
-        let reserved_cores = cpus.iter().cloned().collect::<HashSet<_>>();
-        let available_cores = core_affinity::get_core_ids()
-            .expect("linux provide affine cores")
+        let reserved_cores = cpus.iter().copied().map(CpuId).collect::<HashSet<_>>();
+        let unreserved_cores = online_cpus()?
             .into_iter()
-            .map(|core_affinity::CoreId { id }| id)
-            .collect::<HashSet<_>>();
-        let unreserved_cores = available_cores
-            .difference(&reserved_cores)
-            .cloned()
+            .filter(|core| !reserved_cores.contains(core))
             .collect::<Vec<_>>();
+
+        if unreserved_cores.is_empty() {
+            return Err(
+                "all online CPUs are reserved for XDP; no CPU available for the main thread".into(),
+            );
+        }
 
         let tx_loop_builders = cpus
             .into_iter()
@@ -234,13 +235,13 @@ impl TransmitterBuilder {
                 // since we aren't necessarily allocating from the thread that we intend to run on,
                 // temporarily switch to the target cpu for each TxLoop to ensure that the Umem region
                 // is allocated to the correct numa node
-                set_cpu_affinity([cpu_id]).unwrap();
+                set_cpu_affinity(None, [CpuId(cpu_id)])?;
                 let tx_loop_builder = TxLoopBuilder::new(cpu_id, QueueId(i as u64), config, &dev);
                 // migrate main thread back off of the last xdp reserved cpu
-                set_cpu_affinity(unreserved_cores.clone()).unwrap();
-                tx_loop_builder
+                set_cpu_affinity(None, unreserved_cores.clone())?;
+                Ok(tx_loop_builder)
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
 
         // switch to higher caps while we setup XDP. We assume that an error in
         // this function is irrecoverable so we don't try to drop on errors.
