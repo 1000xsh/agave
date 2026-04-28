@@ -417,8 +417,8 @@ impl Blockstore {
                     self.transaction_memos_cf
                         .delete_in_batch(batch, (signature, slot));
 
-                    let meta = self.read_transaction_status((signature, slot))?;
-                    let loaded_addresses = meta.map(|meta| meta.loaded_addresses);
+                    let loaded_addresses =
+                        self.read_transaction_status_loaded_addresses((signature, slot))?;
                     let account_keys = AccountKeys::new(
                         transaction.message.static_account_keys(),
                         loaded_addresses.as_ref(),

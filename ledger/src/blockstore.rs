@@ -5,6 +5,9 @@
 #[cfg(feature = "dev-context-only-utils")]
 use trees::{Tree, TreeWalk};
 use {
+    self::transaction_status_wire::{
+        TransactionStatusMetaWireError, parse_loaded_addresses, parse_status,
+    },
     crate::{
         ancestor_iterator::AncestorIterator,
         blockstore::column::{Column, TypedColumn, columns as cf},
@@ -30,6 +33,7 @@ use {
     dashmap::DashSet,
     itertools::Itertools,
     log::*,
+    prost::Message,
     rand::Rng,
     rayon::iter::{IntoParallelIterator, ParallelIterator},
     rocksdb::{DBRawIterator, LiveFile},
@@ -50,13 +54,16 @@ use {
     solana_sha256_hasher::hashv,
     solana_signature::Signature,
     solana_signer::Signer,
-    solana_storage_proto::{StoredExtendedRewards, StoredTransactionStatusMeta},
+    solana_storage_proto::{
+        StoredExtendedRewards, StoredTransactionStatusMeta, convert::generated,
+    },
     solana_streamer::{evicting_sender::EvictingSender, streamer::ChannelSend},
     solana_time_utils::timestamp,
     solana_transaction::{
         TransactionVerificationMode,
         versioned::{VersionedTransaction, sanitized::SanitizedVersionedTransaction},
     },
+    solana_transaction_error::TransactionResult as TxResult,
     solana_transaction_status::{
         ConfirmedTransactionStatusWithSignature, ConfirmedTransactionWithStatusMeta, Rewards,
         RewardsAndNumPartitions, TransactionStatusMeta, TransactionWithStatusMeta,
@@ -92,6 +99,7 @@ use {
 pub mod blockstore_purge;
 pub mod column;
 pub mod error;
+mod transaction_status_wire;
 pub use {
     crate::{
         blockstore::error::{BlockstoreError, Result},
@@ -3635,6 +3643,47 @@ impl Blockstore {
             .and_then(|meta| meta.try_into().ok()))
     }
 
+    fn map_transaction_status_wire<T>(
+        &self,
+        index: (Signature, Slot),
+        parser: impl FnOnce(&[u8]) -> std::result::Result<T, TransactionStatusMetaWireError>,
+    ) -> Result<Option<T>> {
+        let Some(slice) = self.transaction_status_cf.get_slice(index)? else {
+            return Ok(None);
+        };
+
+        match parser(slice.as_ref()) {
+            Ok(value) => Ok(Some(value)),
+            Err(TransactionStatusMetaWireError::Malformed(_reason)) => {
+                Err(BlockstoreError::ProtobufDecodeError(
+                    generated::TransactionStatusMeta::decode(slice.as_ref())
+                        .expect_err("wire walker rejected protobuf bytes that prost accepted"),
+                ))
+            }
+            Err(
+                TransactionStatusMetaWireError::InvalidStatusError
+                | TransactionStatusMetaWireError::InvalidLoadedWritableAddress
+                | TransactionStatusMetaWireError::InvalidLoadedReadonlyAddress,
+            ) => Ok(None),
+        }
+    }
+
+    #[inline]
+    fn read_transaction_status_result(
+        &self,
+        index: (Signature, Slot),
+    ) -> Result<Option<TxResult<()>>> {
+        self.map_transaction_status_wire(index, parse_status)
+    }
+
+    #[inline]
+    fn read_transaction_status_loaded_addresses(
+        &self,
+        index: (Signature, Slot),
+    ) -> Result<Option<solana_message::v0::LoadedAddresses>> {
+        self.map_transaction_status_wire(index, parse_loaded_addresses)
+    }
+
     #[inline]
     fn write_transaction_status_helper<'a, F>(
         &self,
@@ -3809,6 +3858,67 @@ impl Blockstore {
         Ok((None, counter))
     }
 
+    fn get_transaction_status_result_with_counter(
+        &self,
+        signature: Signature,
+        confirmed_unrooted_slots: &HashSet<Slot>,
+    ) -> Result<(Option<(Slot, TxResult<()>)>, u64)> {
+        let mut counter = 0;
+        let (lock, _) = self.ensure_lowest_cleanup_slot();
+        let first_available_block = self.get_first_available_block()?;
+
+        let iterator = self.transaction_status_cf.iter(IteratorMode::From(
+            (signature, first_available_block),
+            IteratorDirection::Forward,
+        ))?;
+
+        for ((sig, slot), _data) in iterator {
+            counter += 1;
+            if sig != signature {
+                break;
+            }
+            if !self.is_root(slot) && !confirmed_unrooted_slots.contains(&slot) {
+                continue;
+            }
+            let status = self
+                .read_transaction_status_result((signature, slot))?
+                .map(|status| (slot, status));
+            drop(lock);
+            return Ok((status, counter));
+        }
+
+        drop(lock);
+        Ok((None, counter))
+    }
+
+    fn get_transaction_status_slot(
+        &self,
+        signature: Signature,
+        confirmed_unrooted_slots: &HashSet<Slot>,
+    ) -> Result<Option<Slot>> {
+        let (lock, _) = self.ensure_lowest_cleanup_slot();
+        let first_available_block = self.get_first_available_block()?;
+
+        let iterator = self.transaction_status_cf.iter(IteratorMode::From(
+            (signature, first_available_block),
+            IteratorDirection::Forward,
+        ))?;
+
+        for ((sig, slot), _data) in iterator {
+            if sig != signature {
+                break;
+            }
+            if !self.is_root(slot) && !confirmed_unrooted_slots.contains(&slot) {
+                continue;
+            }
+            drop(lock);
+            return Ok(Some(slot));
+        }
+
+        drop(lock);
+        Ok(None)
+    }
+
     /// Returns a transaction status
     pub fn get_rooted_transaction_status(
         &self,
@@ -3824,6 +3934,15 @@ impl Blockstore {
         confirmed_unrooted_slots: &HashSet<Slot>,
     ) -> Result<Option<(Slot, TransactionStatusMeta)>> {
         self.get_transaction_status_with_counter(signature, confirmed_unrooted_slots)
+            .map(|(status, _)| status)
+    }
+
+    /// Returns a transaction result without decoding the full status metadata.
+    pub fn get_rooted_transaction_status_result(
+        &self,
+        signature: Signature,
+    ) -> Result<Option<(Slot, TxResult<()>)>> {
+        self.get_transaction_status_result_with_counter(signature, &HashSet::default())
             .map(|(status, _)| status)
     }
 
@@ -3975,11 +4094,9 @@ impl Blockstore {
         let (slot, mut before_excluded_signatures) = match before {
             None => (highest_slot, None),
             Some(before) => {
-                let transaction_status =
-                    self.get_transaction_status(before, &confirmed_unrooted_slots)?;
-                match transaction_status {
+                match self.get_transaction_status_slot(before, &confirmed_unrooted_slots)? {
                     None => return Ok(SignatureInfosForAddress::default()),
-                    Some((slot, _)) => {
+                    Some(slot) => {
                         let mut slot_signatures = self.get_block_signatures_rev(slot)?;
                         if let Some(pos) = slot_signatures.iter().position(|&x| x == before) {
                             slot_signatures.truncate(pos + 1);
@@ -4002,11 +4119,9 @@ impl Blockstore {
         let (lowest_slot, until_excluded_signatures, found_until) = match until {
             None => (first_available_block, HashSet::new(), false),
             Some(until) => {
-                let transaction_status =
-                    self.get_transaction_status(until, &confirmed_unrooted_slots)?;
-                match transaction_status {
+                match self.get_transaction_status_slot(until, &confirmed_unrooted_slots)? {
                     None => (first_available_block, HashSet::new(), false),
-                    Some((slot, _)) => {
+                    Some(slot) => {
                         let mut slot_signatures = self.get_block_signatures_rev(slot)?;
                         if let Some(pos) = slot_signatures.iter().position(|&x| x == until) {
                             slot_signatures = slot_signatures.split_off(pos);
@@ -4078,9 +4193,9 @@ impl Blockstore {
         let mut get_status_info_timer = Measure::start("get_status_info_timer");
         let mut infos = vec![];
         for (slot, signature, index) in address_signatures_iter {
-            let transaction_status =
-                self.get_transaction_status(signature, &confirmed_unrooted_slots)?;
-            let err = transaction_status.and_then(|(_slot, status)| status.status.err());
+            let err = self
+                .read_transaction_status_result((signature, slot))?
+                .and_then(|status| status.err());
             let memo = self.read_transaction_memos(signature, slot)?;
             let block_time = self.get_block_time(slot)?;
             infos.push(ConfirmedTransactionStatusWithSignature {
@@ -8929,6 +9044,20 @@ pub mod tests {
         assert_eq!(return_data.unwrap(), test_return_data);
         assert_eq!(compute_units_consumed, compute_units_consumed_1);
         assert_eq!(cost_units, cost_units_1);
+        assert_eq!(
+            blockstore
+                .read_transaction_status_result((Signature::default(), 0))
+                .unwrap()
+                .unwrap(),
+            Err(TransactionError::AccountNotFound)
+        );
+        assert_eq!(
+            blockstore
+                .read_transaction_status_loaded_addresses((Signature::default(), 0))
+                .unwrap()
+                .unwrap(),
+            test_loaded_addresses
+        );
 
         // insert value
         let status = TransactionStatusMeta {
@@ -8989,6 +9118,13 @@ pub mod tests {
         assert_eq!(return_data.unwrap(), test_return_data);
         assert_eq!(compute_units_consumed, compute_units_consumed_2);
         assert_eq!(cost_units, cost_units_2);
+        assert_eq!(
+            blockstore
+                .read_transaction_status_result((Signature::from([2u8; 64]), 9))
+                .unwrap()
+                .unwrap(),
+            Ok(())
+        );
     }
 
     #[test]
@@ -9088,6 +9224,12 @@ pub mod tests {
             assert_eq!(slot, 2);
             assert_eq!(counter, 2);
         }
+        assert_eq!(
+            blockstore
+                .get_rooted_transaction_status_result(signature2)
+                .unwrap(),
+            Some((2, Ok(())))
+        );
 
         // Signature exists, root found although not required
         if let (Some((slot, _status)), counter) = blockstore
@@ -9104,6 +9246,12 @@ pub mod tests {
             .unwrap();
         assert_eq!(status, None);
         assert_eq!(counter, 2);
+        assert_eq!(
+            blockstore
+                .get_rooted_transaction_status_result(signature4)
+                .unwrap(),
+            None
+        );
 
         // Signature exists in skipped slot, no non-root found
         let (status, counter) = blockstore

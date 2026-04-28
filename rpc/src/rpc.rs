@@ -1668,20 +1668,20 @@ impl JsonRpcRequestProcessor {
             } else if search_transaction_history {
                 if let Some(status) = self
                     .blockstore
-                    .get_rooted_transaction_status(signature)
+                    .get_rooted_transaction_status_result(signature)
                     .map_err(|_| Error::internal_error())?
-                    .filter(|(slot, _status_meta)| {
+                    .filter(|(slot, _status)| {
                         slot <= &self
                             .block_commitment_cache
                             .read()
                             .unwrap()
                             .highest_super_majority_root()
                     })
-                    .map(|(slot, status_meta)| {
-                        let err = status_meta.status.clone().err();
+                    .map(|(slot, status)| {
+                        let err = status.clone().err();
                         TransactionStatus {
                             slot,
-                            status: status_meta.status,
+                            status,
                             confirmations: None,
                             err,
                             confirmation_status: Some(TransactionConfirmationStatus::Finalized),
